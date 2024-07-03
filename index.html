@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>模拟胶片相机测光表</title>
+</head>
+
+<body>
+    <h2>模拟胶片相机测光表</h2>
+    <!-- 添加canvas元素 -->
+    <canvas id="cameraCanvas"></canvas>
+    <br>
+    <select id="mode" onchange="updateUI()">
+        <option value="aperturePriority">光圈优先</option>
+        <option value="shutterPriority">快门优先</option>
+    </select>
+    <br>
+    <label for="iso">ISO:</label>
+    <select id="iso" onchange="calculate()"></select>
+    <br>
+    <label for="aperture">光圈值(F-Number):</label>
+    <select id="aperture" onchange="calculate()" disabled></select>
+    <br>
+    <label for="shutterSpeed">快门速度(秒):</label>
+    <select id="shutterSpeed" onchange="calculate()" disabled></select>
+    <br>
+
+    <script>
+        let averageLuminance = 0; // 平均亮度
+        let isoList = [25, 50, 100, 200, 400, 800, 1600, 3200]; // 支持的ISO值
+        let fList = [1.2, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32]; // 支持的光圈值
+        let shutterSpeedList = ['1 / 8000', '1 / 4000', '1 / 2000', '1 / 1000', '1 / 500', '1 / 250', '1 / 125', '1 / 60', '1 / 30', '1 / 15', '1 / 8', '1 / 4', '1 / 2', '1', '2', '4']; // 支持的快门速度
+
+        function populateSelect(selectId, options) {
+            const select = document.getElementById(selectId);
+            options.forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option;
+                opt.innerHTML = option;
+                select.appendChild(opt);
+            });
+        }
+
+        function startCamera() {
+            const canvas = document.getElementById('cameraCanvas');
+            const context = canvas.getContext('2d');
+            const video = document.createElement('video');
+
+            video.setAttribute('playsinline', '');
+            video.setAttribute('autoplay', '');
+            video.style.display = 'none';
+
+            document.body.appendChild(video);
+
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.play();
+
+                    function draw() {
+                        if (video.videoWidth > 0) {
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                            // 直接使用修改后的estimateLuminance函数处理当前帧
+                            estimateLuminance(imageData);
+                        }
+                        requestAnimationFrame(draw);
+                    }
+                    draw();
+                })
+                .catch(error => {
+                    console.error('摄像头访问错误:', error);
+                });
+        }
+
+        // 修改estimateLuminance函数，使其接受ImageData对象
+        function estimateLuminance(imageData) {
+            const data = imageData.data;
+            let totalLuminance = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // 计算亮度
+                const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+                totalLuminance += luminance;
+            }
+
+            averageLuminance = totalLuminance / (data.length / 4);
+           
+            // 这里可以根据计算出的平均亮度进行后续操作
+            calculate();
+        }
+        function updateUI() {
+            const mode = document.getElementById('mode').value;
+            document.getElementById('aperture').disabled = mode === 'shutterPriority';
+            document.getElementById('shutterSpeed').disabled = mode === 'aperturePriority';
+        }
+
+        function calculate() {
+            const mode = document.getElementById('mode').value;
+            const iso = document.getElementById('iso').value;
+            const aperture = document.getElementById('aperture').value;
+            const shutterSpeed = convertToNumber(document.getElementById('shutterSpeed').value)
+
+            let result = '';
+            if (mode === 'aperturePriority') {
+                // 光圈优先模式下计算快门速度
+                const ev = Math.log2(averageLuminance) - Math.log2(iso / 100);
+                const calculatedShutterSpeed = Math.pow(2, -ev) * Math.pow(aperture, 2);
+
+                document.getElementById('shutterSpeed').value = toFraction(calculatedShutterSpeed)
+            } else if (mode === 'shutterPriority') {
+                // 快门优先模式下计算光圈大小
+                const ev = Math.log2(averageLuminance) - Math.log2(iso / 100);
+                const calculatedAperture = Math.sqrt(Math.pow(2, ev) / shutterSpeed);
+                // result 为 flist中最接近calculatedAperture的值
+                let minDiff = Number.MAX_VALUE;
+                for (let i = 0; i < fList.length; i++) {
+                    const diff = Math.abs(fList[i] - calculatedAperture);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        result = fList[i];
+                        document.getElementById('aperture').value = result
+                    }
+                }
+
+            }
+
+
+        }
+
+        function convertToNumber(fractionString) {
+            const parts = fractionString.split(' / ');
+            return parseInt(parts[0], 10) / parseInt(parts[1], 10);
+        }
+
+        function toFraction(shutterSpeed) {
+
+
+            // 将shutterSpeedList中的每个值转换为数字
+            const numericSpeeds = shutterSpeedList.map(speed => convertToNumber(speed));
+
+            // 找到与shutterSpeed最接近的值
+            let closest = numericSpeeds.reduce((prev, curr) => {
+                return (Math.abs(curr - shutterSpeed) < Math.abs(prev - shutterSpeed) ? curr : prev);
+            });
+
+            // 找到最接近的值的索引，以便获取其分数形式
+            const closestIndex = numericSpeeds.indexOf(closest);
+            const closestFraction = shutterSpeedList[closestIndex];
+
+            return closestFraction;
+        }
+    
+        // 使用数据集填充select控件
+        window.onload = function () {
+            populateSelect('iso', isoList);
+            populateSelect('aperture', fList); // 光圈值前添加"F"
+            populateSelect('shutterSpeed', shutterSpeedList);
+            startCamera();
+        };
+
+        updateUI(); // 初始化UI
+    </script>
+</body>
+
+</html>
