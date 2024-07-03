@@ -42,38 +42,58 @@
         }
 
         function startCamera() {
-            const canvas = document.getElementById('cameraCanvas');
-            const context = canvas.getContext('2d');
-            const video = document.createElement('video');
+    const canvas = document.getElementById('cameraCanvas');
+    const context = canvas.getContext('2d');
+    const video = document.createElement('video');
 
-            video.setAttribute('playsinline', '');
-            video.setAttribute('autoplay', '');
-            video.style.display = 'none';
+    video.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
+    video.style.display = 'none';
+    document.body.appendChild(video);
 
-            document.body.appendChild(video);
+    // 获取所有媒体设备
+    navigator.mediaDevices.enumerateDevices()
+        .then(devices => {
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            let backCameraId = null;
 
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(stream => {
-                    video.srcObject = stream;
-                    video.play();
+            // 尝试找到后置摄像头
+            for (let device of videoDevices) {
+                if (device.label.toLowerCase().includes('back')) {
+                    backCameraId = device.deviceId;
+                    break;
+                }
+            }
 
-                    function draw() {
-                        if (video.videoWidth > 0) {
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                            // 直接使用修改后的estimateLuminance函数处理当前帧
-                            estimateLuminance(imageData);
-                        }
-                        requestAnimationFrame(draw);
-                    }
-                    draw();
-                })
-                .catch(error => {
-                    console.error('摄像头访问错误:', error);
-                });
-        }
+            // 定义摄像头约束
+            const constraints = {
+                video: { deviceId: backCameraId ? { exact: backCameraId } : undefined }
+            };
+
+            // 请求视频流
+            return navigator.mediaDevices.getUserMedia(constraints);
+        })
+        .then(stream => {
+            video.srcObject = stream;
+            video.play();
+
+            function draw() {
+                if (video.videoWidth > 0) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    // 直接使用修改后的estimateLuminance函数处理当前帧
+                    estimateLuminance(imageData);
+                }
+                requestAnimationFrame(draw);
+            }
+            draw();
+        })
+        .catch(error => {
+            console.error('摄像头访问错误:', error);
+        });
+}
 
         // 修改estimateLuminance函数，使其接受ImageData对象
         function estimateLuminance(imageData) {
