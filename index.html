@@ -56,9 +56,12 @@
         .then(devices => {
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
             let backCameraId = null;
-
+            console.log('====================================');
+                console.log(devices);
+                console.log('====================================');
             // 尝试找到后置摄像头
             for (let device of videoDevices) {
+               
                 if (device.label.toLowerCase().includes('back')) {
                     backCameraId = device.deviceId;
                     break;
